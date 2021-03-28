@@ -1,0 +1,1480 @@
+/* per i tipi immediati da sostituire ed anche per i registri se sono fissi e non variabili utilizzare la notazione $FF00(65280) or valore 
+   Per stringhe wildchar = '?' per Numeri wildchar $CC(204) per distinguere tra indice o valore reale aggiungere $FF00(65280) [es. 1 indica indice 65281 indica valore 1]
+   - size operando nell'array repls non indica sempre il size ma da quale istruzione del patter prelevare il size indicato con valori minori di 0(per evitare confusione con size reali)
+   - size istruzione(in repls) 255 vuol dire istruzione con possibile stack displ(es. [esp+4 ] diventa [esp] oppure [ecx+4] rimane [ecx+4] 
+   - size istruzione(in instrs) 255 vuol dire che deve eseguire la verifica se effettivamente si tratta di esp + disp(per evitare conflitti) 
+   - Es.
+   -    operando tipo registro {"Tipo": "reg","Size": 0,"Reg": 1} ; {"Tipo": "reg","Size": 0,"Reg": "esp"}
+   -    operando tipo memoria  {"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0} ; {"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}
+   -    operando tipo costante {"Tipo": "imm","Size": 0,"Imm": 65284}; {"Tipo": "imm","Size": 0,"Imm": 1}
+   -   
+   -    "repls": [{"OpCode": 1,"Size": 255,"Operand": [{"Tipo": "mem","Size": -4,"Mem":  {"seg": "?","base": 2,"index": 0,"scale": 1,"disp": 0}},1]}]
+   -          {"OpCode": 1,"Size": 255,"Operand": .Size 255 vuol dire stack displacementse sp/esp/rsp al displacememt viene sottratto il size(2/4/8)
+   -          {"Tipo": "mem","Size": -41,"Mem  . Volori negativi del size indicano che il size viene prelevato dal num istruzione corrispondente eliminando il meno,
+   -    in questo caso dalla quarta istruzione del blocco partatendo dall'alto. -4 indica l'indice istruzione 1 indica il primo operando quindi ricapitolando
+   -    -41 indica size prelevato dalla quarta istruzione 1°  operando
+   -    il Valore -50 indica di far riferimento alla parte alta dei registri(casi particolari)
+   -    Priorità 250 casi particolare( in cui dare prevalenza assoluta) di conflitti con pattern uso esp/rsp
+   -    Priorità 251 casi particolare( in cui dare prevalenza assoluta anche per patterns più corti,casi tipo mov esp,[esp]) di conflitti con pattern uso esp/rsp
+   -    priorità 1 salto un ciclo per evitare cercare di risolvere alcuni conflitti con pattern
+   -    "Option": $70 non accetta che questa pepphole venga applicato a esp/rsp +- 4/8 
+   -    "Option": $90 evita che per esmpio nei mov vi siano due argomenti mem
+   -    "Option": $64 Verifica che se si tratta di esp/rsp il displacement è maggiore di 0
+   -    "Option": $11 operazioni su valori immediati diversi - Gli immediati vengono sottratti
+*/
+{
+	"FileVersion": "2018\/5\/24",
+	"Patters": [
+	    /*# mov edx, dword ptr [esp]
+          # add esp, 4,2
+          # ------------------------
+          # pop edx
+		*/
+		{
+			"priority": 250,
+			"NomePat": "n. 1 - MovAddPop",
+			"instrs": [{"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},     {"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]},
+				       {"OpCode": "add","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65282}]}],
+			"repls": [{"OpCode": "pop","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+	    {
+			"priority": 0,
+			"NomePat": "n. 1 - MovAddPop",
+			"instrs": [{"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},      {"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]},
+				       {"OpCode": "add","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"}, {"Tipo": "imm","Size": 0,"Imm": 65284}]}],
+			"repls": [{"OpCode": "pop","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		/*# push 0x6FB72D28
+          # mov ebx, dword ptr [esp]
+		  # add esp, 4,2
+          # ------------------------
+          # push 0x6FB72D28
+		  # pop ebx
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 2 - [PushMovMov",
+			"instrs": [{"OpCode":"push","Size": 0, "Operand": [{"Tipo": "imm","Size": 0,"Imm": 1}]},
+				       {"OpCode": "mov","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}, {"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]},
+					   {"OpCode": "add","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"}, {"Tipo": "imm","Size": 0,"Imm": 65284}]}],
+			"repls": [{"OpCode": "push","Size": 0, "Operand": [{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			          {"OpCode": "pop","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 1 }]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 2 - [PushMovMov",
+			"instrs": [{"OpCode":"push","Size": 0, "Operand": [{"Tipo": "imm","Size": 0,"Imm": 1}]},
+				       {"OpCode": "mov","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}, {"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]},
+					   {"OpCode": "add","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"}, {"Tipo": "imm","Size": 0,"Imm": 65282}]}],
+			"repls": [{"OpCode": "push","Size": 0, "Operand": [{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			          {"OpCode": "pop","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 1 }]}]
+		},
+		/*# push esp
+          # add dword ptr [esp], 4
+          # ------------------------
+          # push esp
+		  
+		  # push eax/imm
+          # mov dword ptr [esp], ebx/imm
+          # ------------------------
+          # push ebx/imm
+		
+		
+		  # sub esp, 4,2
+          # mov dword ptr [esp], edx
+          # ------------------------
+          # push edx
+		*/
+		{
+			"priority": 0,  /*  push esp fp00000001 */
+			"NomePat": "n. 2 - [PushAddPush",
+			"instrs": [{"OpCode":"push","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp" }]},
+				       {"OpCode": "add","Size": 0, "Operand": [{"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}, {"Tipo": "imm","Size": 0,"Imm": 65284 }]}],
+			"repls": [ {"OpCode": "push","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp" }]}]
+		},
+		{
+			"priority": 250,
+			"NomePat": "n. 2 - [PushMovPush",
+			"instrs": [{"OpCode":"push","Size": 0, "Operand": [1]},
+				       {"OpCode": "mov","Size": 0, "Operand": [{"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}, 2]}],
+			"repls": [{"OpCode": "push","Size": 0, "Operand": [2]}]
+		},
+		{
+			"priority": 250, /*-- fp00000018 --*/
+			"NomePat": "n. 2 - [PushMovPush",
+			"instrs": [{"OpCode":"push","Size": 0, "Operand": [1]},
+				       {"OpCode": "mov","Size": 0, "Operand": [{"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}, 2]},
+					   {"OpCode": "mov","Size": 0, "Operand": [{"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}, 3]}],
+			"repls": [{"OpCode": "push","Size": 0, "Operand": [3]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 3 - SubMovPush",
+			"instrs": [{"OpCode": "sub","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65282}]},
+				       {"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}, {"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "push","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 3 - SubMovPush",
+			"instrs": [{"OpCode": "sub","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+				       {"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}, {"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "push","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		/* # add  esp, 4   evita conflitti con pattern Add/Sub
+           # sub  esp, 4
+           # mov  dword ptr [esp], esi
+		   # ------------------------
+           # add  esp, 4
+		   # push esi 
+		*/
+		/* # add  esp, 4   evita conflitti con pattern Add/Sub
+           # sub  esp, 4
+		   # push edi
+           # mov  dword ptr [esp+4], esi
+		   # pop  edi
+		   # ------------------------
+           # add  esp, 4
+		   # push esi 
+		*/
+		{    /* --  fp00000024 --*/
+			"priority": 0, 
+			"NomePat": "n. 3 - SubMovPush",
+			"instrs": [{"OpCode": "add","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+			           {"OpCode": "sub","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+					   {"OpCode": "push","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+				       {"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 4}}, {"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode": "pop","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "add","Size":  0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]}, 
+			          {"OpCode": "push","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 2}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 3 - SubMovPush",
+			"instrs": [{"OpCode": "add","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65282}]},
+			           {"OpCode": "sub","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65282}]},
+				       {"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}, {"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "add","Size":  0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65282}]}, 
+			          {"OpCode": "push","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 3 - SubMovPush",
+			"instrs": [{"OpCode": "add","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+			           {"OpCode": "sub","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+				       {"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}, {"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "add","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+			          {"OpCode": "push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		/*# mov esp,[esp]
+		  # ------------------------
+          # pop esp
+		*/
+		{
+			"priority": 251,
+			"NomePat": "n. 4 - MovEspEsp ",
+			"instrs": [{"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]}],
+			"repls": [{"OpCode": "pop","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"}]}]
+		},
+		/*# sub  ax, -1
+		
+		  # add  ax, 1
+		  # ------------
+          # inc ax
+		*/
+		{
+			"priority": 250,
+			"NomePat": "n. 57 - AddToInc",
+			"instrs": [{"OpCode":"add","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 65281}]}],
+			"repls": [{"OpCode": "inc","Size": 0,"Operand": [1]}]
+		},
+		{
+			"priority": 250, 
+			"NomePat": "n. 58 - SubToInc",
+			"instrs": [{"OpCode":"sub","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": -1}]}],
+			"repls": [{"OpCode": "inc","Size": 0,"Operand": [1]}]
+		},
+		{
+			"priority": 250,
+			"NomePat": "n. 58 - SubToInc",
+			"instrs": [{"OpCode":"sub","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 255}]}],
+			"repls": [{"OpCode": "inc","Size": 0,"Operand": [1]}]
+		},
+		/*# sub  ax, 1
+		
+		  # add  ax, -1
+		  # ------------
+          # dec ax
+		*/
+		{
+			"priority": 250,
+			"NomePat": "n. 59 - SubToDec",
+			"instrs": [{"OpCode":"sub","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 65281}]}],
+			"repls": [{"OpCode": "dec","Size": 0,"Operand": [1]}]
+		},
+		{
+			"priority": 250, 
+			"NomePat": "n. 60 - AddToDec",
+			"instrs": [{"OpCode":"add","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": -1}]}],
+			"repls": [{"OpCode": "dec","Size": 0,"Operand": [1]}]
+		},
+		{
+			"priority": 250,
+			"NomePat": "n. 60 - AddToDec",
+			"instrs": [{"OpCode":"add","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 255}]}],
+			"repls": [{"OpCode": "dec","Size": 0,"Operand": [1]}]
+		},
+		/*# xor ecx, dword ptr [esp]
+          # xor dword ptr [esp], ecx
+          # xor ecx, dword ptr [esp]
+          # -------------------------
+          # xchg dword ptr [esp], ecx
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 5 - XorXorXor",
+			"instrs": [{"OpCode": "xor","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem": 1}]},
+			           {"OpCode": "xor","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "xor","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem": 1}]}],
+			"repls": [{"OpCode": "xchg","Size": 0,"Operand": [{"Tipo": "mem","Size": -21,"Mem": 1},{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		/*# xor dword ptr [esp],ecx
+          # xor ecx, dword ptr [esp]
+          # xor dword ptr [esp], ecx
+          # -------------------------
+          # xchg dword ptr [esp], ecx
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 6 - XorXorXor",
+			"instrs": [{"OpCode": "xor","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode": "xor","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem": 1}]},
+					   {"OpCode": "xor","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1},{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "xchg","Size": 0,"Operand": [{"Tipo": "mem","Size": -11,"Mem": 1},{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 6 - XorXorXor",
+			"instrs": [{"OpCode": "xor","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem": 1}]},
+			           {"OpCode": "xor","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "xor","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem": 1}]}],
+			"repls": [{"OpCode": "xchg","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": -11,"Mem": 1}]}]
+		},
+		/*# xor ebx, ecx
+          # xor ecx, ebx
+          # xor ebx, ecx
+          # -------------
+          # xchg ebx, ecx
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 7 - XorXorXor",
+			"instrs": [{"OpCode": "xor","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+			           {"OpCode": "xor","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "xor","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]}],
+			"repls": [{"OpCode": "xchg","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]}]
+		},
+		/*# push dx
+          # mov dl, al
+          # mov al, cl
+          # mov cl, dl
+          # pop dx
+          # -------------
+          # xchg al, cl
+		  
+		 # push eax
+         # mov ah, dh
+         # mov dh, byte ptr [ebp+ebx*0x1]
+         # mov byte ptr [ebp+ebx*0x1], ah
+         # pop eax
+		 # ------------------------------
+         # xchg byte ptr [ebp+ebx*0x1], dh  (3° istruz. Arg1, 2° istruz. Arg 1)
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 7A - PushMovMovMovPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2},{"Tipo": "reg","Size": 0,"Reg": 3}]},
+					   {"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 3},1]},
+					   {"OpCode": "mov","Size": 0,"Operand": [1,{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "xchg","Size": 0,"Operand": [1,{"Tipo": "reg","Size": 0,"Reg": 3}]}]
+		},
+		/*# push eax
+          # mov eax, dword ptr [esp + 4/2]
+          # pop dword ptr [esp]
+          # -------------------------
+          # xchg dword ptr [esp], eax
+		*/
+		{
+			"priority": 250,
+			"NomePat": "n. 8 - PushMovPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 4}}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]}],
+			"repls": [{"OpCode": "xchg","Size": 0,"Operand": [{"Tipo": "mem","Size": -31,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		{
+			"priority": 250,
+			"NomePat": "n. 8 - PushMovPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 2}}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]}],
+			"repls": [{"OpCode": "xchg","Size": 0,"Operand": [{"Tipo": "mem","Size": -31,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		/*# push ebx
+          # mov ebx, ebp
+          # pop ebp
+          # ------------
+          # xchg ebx, ebp
+		  
+		  # push dword ptr [eax]
+          # mov dword ptr [eax], edx
+          # pop edx
+		  # ------------
+		  # xchg dword [eax],edx
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 9 - PushMovPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2}]}],
+			"repls": [{"OpCode": "xchg","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 9 - PushMovPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1}]},
+			           {"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "xchg","Size": 0,"Operand": [{"Tipo": "mem","Size": -21,"Mem": 1},{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		/*# push eax
+          # pop eax
+        */
+	    {
+			"priority": 0,
+			"NomePat": "n. 10 - PushPop",
+			"instrs": [{"OpCode": "push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+				       {"OpCode": "pop","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": []
+		},
+		/*# pushal
+          # popal
+        */
+	    {
+			"priority": 0,
+			"NomePat": "n. 11 - PushalPopal",
+			"instrs": [{"OpCode": "pushal","Size": 0,"Operand": []},
+				       {"OpCode": "popal","Size": 0, "Operand": []}],
+			"repls": []
+		},
+		/*# push eax
+          # pop ecx
+          # -------------------------
+          # mov ecx, eax
+		  
+		  # push 0x1234
+          # pop edx
+          # ---------------
+          # mov edx, 0x1234
+		  
+		  # push dword ptr [esp]
+          # pop edx
+          # --------------------
+          # mov edx, dword ptr [esp]
+		*/
+		{
+			"priority": 0,
+			"Option": "90",
+			"NomePat": "n. 12 - PushPop",
+			"instrs": [{"OpCode": "push","Size": 0,"Operand": [1]},
+				       {"OpCode": "pop","Size": 0, "Operand": [2]}],
+			"repls": [{"OpCode": "mov","Size": 0,  "Operand": [2,1]}]
+		},
+		/*# push esp
+          # add dword ptr [esp], 4
+          # pop eax
+          # -----------------------
+          # mov eax, esp
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 13 - PushAddPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"}]},
+			           {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": "esp"}]}]
+		},
+		/*# xor eax, eax
+          # ------------
+          # mov eax, 0
+		*/
+	    {
+			"priority": 0,
+			"NomePat": "n. 14 - XorRegReg",
+			"instrs": [{"OpCode": "xor","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 1 }]}],
+			"repls": [{"OpCode": "mov","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65280}]}]
+		},
+		/*# push  ebx
+          # mov  ebx, 0
+          # add  ebx, edx
+          # add;xor;mov  al, byte ptr [ebx]
+          # pop  ebx
+		  # -------------------------------
+		  # mov al, byte ptr [edx]
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 15 - PushMovAdd2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65280}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":{"oP":1,"OpCodes":"add;xor;mov"},"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 3},{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg":  3},{"Tipo": "mem","Size": -42,"Mem":  {"seg": "?","base": 2,"index": 0,"scale": 1,"disp": 0}}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 16 - [GRP: PushMovAdd2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65280}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":{"oP":1,"OpCodes":"add;xor;mov"},"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}},1]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "mem","Size": -41,"Mem":  {"seg": "?","base": 2,"index": 0,"scale": 1,"disp": 0}},1]}]
+		},
+		/*# push  ebx
+          # mov  ebx, 0
+          # add  ebx, edx
+          # inc;dec;not;neg  byte ptr [ebx]
+          # pop  ebx
+		  # -------------------------------
+		  # inc byte ptr [edx]
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 15 - PushMovAdd1OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65280}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":{"oP":1,"OpCodes":"inc;dec;not;neg"},"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "mem","Size": -41,"Mem":  {"seg": "?","base": 2,"index": 0,"scale": 1,"disp": 0}}]}]
+		},
+		/*# push  eax
+          # mov  eax, esi
+          # add  eax, 0
+          # add  eax, ecx
+          # mov  dword ptr [eax], edx;; mov  edx ,dword ptr [eax] 
+          # pop  eax
+          # -------------------------------
+          # mov dword ptr[ecx+esi],edx  
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 17 - PushMovAddAdd2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65280}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 3}]},
+					   {"OpCode":{"oP":1,"OpCodes":"add;xor;mov"},"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 4}, {"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg":  4},{"Tipo": "mem","Size": -52,"Mem":  {"seg": "?","base": 3,"index": 2,"scale": 1,"disp": 0}}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 18 - PushMovAddAdd2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65280}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 3}]},
+					   {"OpCode":{"oP":1,"OpCodes":"add;xor;mov"},"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}},1]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "mem","Size": -51,"Mem":  {"seg": "?","base": 3,"index": 2,"scale": 1,"disp": 0}},1]}]
+		},
+		/*# push  eax
+		  # mov  eax, esi
+		  # shl  eax, 2
+		  #	add  eax, 0
+		  #	add  eax, ecx
+		  #	mov  dword ptr [eax], edx
+		  # pop  eax
+          # -------------------------------
+          # mov dword ptr[ecx+esi*4],edx
+		*/
+		
+		/*# push  ebx
+		  # mov  ebx, esi
+		  # shl  ebx, 2
+		  # add  ebx, 0x401000
+		  # add  ebx, ecx
+		  # mov  dword ptr [ebx], edx
+		  # pop  ebx
+          # -------------------------------
+          # mov dword ptr[ecx+esi*4+0x401000],edx	  
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 19 - PushMovShl1AddAdd2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"shl" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65281}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 3}]},
+					   {"OpCode":{"oP":1,"OpCodes":"add;xor;mov"},"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 4}, {"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg":  4},{"Tipo": "mem","Size": -62,"Mem":  {"seg": "?","base": 3,"index": 2,"scale": 2,"disp": 1}}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 20 - PushMovShl1AddAdd2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"shl" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65281}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 3}]},
+					   {"OpCode":{"oP":1,"OpCodes":"add;xor;mov"},"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}},1]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "mem","Size": -61,"Mem":  {"seg": "?","base": 3,"index": 2,"scale": 2,"disp": 1}},1]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 21 - PushMovShl2AddAdd2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"shl" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65282}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 3}]},
+					   {"OpCode":{"oP":1,"OpCodes":"add;xor;mov"},"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 4}, {"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg":  4},{"Tipo": "mem","Size": -62,"Mem":  {"seg": "?","base": 3,"index": 2,"scale": 4,"disp": 1}}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 22 - PushMovShl2AddAdd2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"shl" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65282}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 3}]},
+					   {"OpCode":{"oP":1,"OpCodes":"add;xor;mov"},"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}},1]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "mem","Size": -61,"Mem":  {"seg": "?","base": 3,"index": 2,"scale": 4,"disp": 1}},1]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 23 - PushMovShl3AddAdd2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"shl" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65283}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 3}]},
+					   {"OpCode":{"oP":1,"OpCodes":"add;xor;mov"},"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 4}, {"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg":  4},{"Tipo": "mem","Size": -62,"Mem":  {"seg": "?","base": 3,"index": 2,"scale": 8,"disp": 1}}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 24 - PushMovShl3AddAdd2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"shl" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65283}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 3}]},
+					   {"OpCode":{"oP":1,"OpCodes":"add;xor;mov"},"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}},1]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "mem","Size": -61,"Mem":  {"seg": "?","base": 3,"index": 2,"scale": 8,"disp": 1}},1]}]
+		},
+		/*# push  eax
+		  # mov  eax, 0x401000
+		  # add  eax, ecx
+		  # mov  dword ptr [eax], edx
+		  # pop  eax
+          # -------------------------------
+          # mov dword ptr[ecx+0x401000],edx	  
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 25 - PushMovAdd2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":{"oP":1,"OpCodes":"add;xor;mov"},"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 3}, {"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg":  3},{"Tipo": "mem","Size": -42,"Mem":  {"seg": "?","base": 2,"index": 0,"scale": 1,"disp": 1}}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 26 - PushMovAdd2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":{"oP":1,"OpCodes":"add;xor;mov"},"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}},1]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "mem","Size": -41,"Mem":  {"seg": "?","base": 2,"index": 0,"scale": 1,"disp": 1}},1]}]
+		},	
+        /*# push eax
+          # neg;not;dec;inc [esp+1]
+          # pop eax
+		  # -------------------------------
+		  # inc al
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 27 - Push1OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [1]},
+			           {"OpCode":{"oP":1,"OpCodes":"inc;dec;not;neg"} ,"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 65281}}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [1]}],
+			"repls": [{"OpCode": 1,"Size": -50,"Operand": [1]}]
+		},
+		/*# push eax
+          # neg;not;dec;inc [esp]
+          # pop eax
+		  # -------------------------------
+		  # inc eax
+		  
+		  # push mem
+          # neg;not;dec;inc [esp]
+          # pop mem
+          # -------------------------------
+          # inc [eax]
+		 */ 
+		{
+			"priority": 0,
+			"NomePat": "n. 27 - Push1OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [1]},
+			           {"OpCode":{"oP":1,"OpCodes":"inc;dec;not;neg"} ,"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [1]}],
+			"repls": [{"OpCode": 1,"Size": -21,"Operand": [1]}]
+		},
+		/*# push ebp
+          # add;sub;xor;and;or;shr;shl;mov dword ptr [esp + 4], 0x1234
+          # pop ebp
+          # -------------------------------
+          # and dword ptr [esp], 0x1234
+		  #
+		  # push 0x7BBF14FA
+          # mov ecx, dword ptr [esp]
+		  # mov dword ptr [esp], edx  -- fp00000021 --
+          # -------------------------------
+          # mov ecx, 0x7BBF14FA
+		  # push edx
+		  #
+		  # push eax
+          # add ebx, 4
+          # pop eax
+          # ----------
+          # add ebx, 4
+		*/
+		{
+		  /*# 0x59D129: push eax
+            # 0x70D1CF: mov ax, 0x34
+            # 0x621810: pop eax
+			#
+			# -----------
+			# [] "Option": $800000 = Registro valido anche se subreg. secondo numero indice istruzione 811122 = 1-> in 1° istruz. ; subreg in 1° istru. operando n. 1; reg in 2° istru. operando n. 2
+			# Gestione di questo caso
+		  */	
+			"priority": 250,
+			"Option": "822111",
+			"NomePat": "n. 28 - PushMovPop", 
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},1]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": []
+		}, 
+		{
+			"priority": 0,
+			"NomePat": "n. 28 - Push2OpPop", /*--fp00000010--  non displ */
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"add;sub;xor;and;or;shr;shl;mov"} ,"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},1]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": -21,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},1]}]
+		},
+		{   /* -- fp00000021 -- */
+			"priority": 0,
+			"NomePat": "n. 28 - Push2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0, "Operand": [{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode": "mov","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}, {"Tipo": "mem","Size": 0,"Mem": {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]},
+			           {"OpCode": "mov","Size": 0, "Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg": 2}]}],
+			"repls": [{"OpCode": "mov","Size":  0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			          {"OpCode":"push","Size": 0, "Operand": [{"Tipo": "reg","Size": 0,"Reg": 2}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 28 - Push2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"add;sub;xor;and;or;shr;shl;mov"} ,"Size": 255,"Operand": [1,2]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 255,"Operand": [1,2]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 28 - Push2OpPop", /*--fp00000002--*/
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"inc;dec"} ,"Size": 255,"Operand": [1]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 255,"Operand": [1]}]
+		},
+		/*# push edx
+          # mov dh, al
+          # inc;dec;neg;not dh
+          # mov al, dh
+          # pop edx
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 28A - PushMovOp1MovPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2},{"Tipo": "reg","Size": 0,"Reg": 3}]},
+			           {"OpCode":{"oP":1,"OpCodes":"inc;dec;neg;not"} ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 3},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 3}]}]
+		},
+		
+		/*# push  ecx
+          # mov   ecx, 0
+          # sub   ecx, eax/mem
+          # xchg  eax/mem, ecx
+          # pop   ecx
+		  # ------------------------
+          # neg eax/mem
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 29 - PushMovSubXchgPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65280}]},
+			           {"OpCode":"sub" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "neg","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 30 - PushMovSubXchgPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65280}]},
+			           {"OpCode":"sub" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem": 1}]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "neg","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1}]}]
+		},
+		{   /* fp00000003 */
+			"priority": 0,
+			"NomePat": "n. 29 - PushMovSubXchgPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65280}]},
+			           {"OpCode":"sub" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "neg","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2}]}]
+		},
+		{   /* fp00000003 */
+			"priority": 0,
+			"NomePat": "n. 30 - PushMovSubXchgPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65280}]},
+			           {"OpCode":"sub" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem": 1}]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem": 1}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "neg","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1}]}]
+		},
+		/*# push  ecx
+          # mov   ecx, 0
+          # sub   ecx, eax/mem
+          # mov  eax/mem, ecx
+          # pop   ecx
+		  # ------------------------
+          # neg eax/mem
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 31 - PushMovSubMovPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65280}]},
+			           {"OpCode":"sub" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "neg","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 32 - PushMovSubMovPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65280}]},
+			           {"OpCode":"sub" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem": 1}]},
+					   {"OpCode":"mov","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "neg","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1}]}]
+		},
+		/*# push 0
+          # sub  byte ptr[esp], ah
+          # mov  ah, byte ptr[esp]
+          # add  esp, 4
+		  # -------------------
+		  # neg ah
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 32 - PushMovSubMovPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "imm","Size": 0,"Imm": 65280}]},
+			           {"OpCode":"sub" ,"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}, {"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]},
+					   {"OpCode":"add","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"}, {"Tipo": "imm","Size": 0,"Imm": 65284}]}],
+			"repls": [{"OpCode": "neg","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		/*# dec ecx/mem
+          # not ecx/mem
+		  # ------------------------
+          # neg ecx/mem
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 33 - DecNot",
+			"instrs": [{"OpCode": "dec","Size": 0,"Operand": [1]},
+			           {"OpCode": "not","Size": 0,"Operand": [1]}],
+			"repls": [{"OpCode": "neg","Size": 0,"Operand": [1]}]
+		},
+		/*# not ecx/mem
+		  # inc ecx/mem
+		  # ------------------------
+          # neg ecx/mem
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 34 - NotInc",
+			"instrs": [{"OpCode": "not","Size": 0,"Operand": [1]},
+			           {"OpCode": "inc","Size": 0,"Operand": [1]}],
+			"repls": [{"OpCode": "neg","Size": 0,"Operand": [1]}]
+		},
+		/*# push 0
+          # sub dword ptr [esp], esi
+          # pop esi
+          # ------------------------
+          # neg esi
+		*/
+		{
+			"priority": 100,
+			"NomePat": "n. 35 - PushSubPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "imm","Size": 0,"Imm": 65280}]},
+			           {"OpCode":"sub" ,"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "neg","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		/*# push  0
+          # sub  byte ptr [esp], al
+          # mov  al, byte ptr [esp]
+          # add  esp, 2
+          # ------------------------
+          # neg al
+		*/
+		{
+			"priority": 100,
+			"NomePat": "n. 36 - PushSubMovAdd",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "imm","Size": 0,"Imm": 65280}]},
+			           {"OpCode":"sub" ,"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]},
+					   {"OpCode": "add","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65282}]}],
+			"repls": [{"OpCode": "neg","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		/*# push 0x7f3b48c5
+          # add;sub;xor;and;or;shr;shl;mov dword ptr [esp + 8], 0x4c41271a
+          # pop ebx
+          # -----------------------------------
+          # add dword ptr [esp + 4], 0x4c41271a
+          # mov ebx, 0x7f3b48c5
+		  #
+		  # push 0xa9101696
+          # mov edx, eax
+          # pop eax
+          # ---------------
+          # mov edx, eax
+          # mov eax, 0xa9101696
+		*/
+		{
+			"priority": 0,
+			"Option": "64",   /* fp00000031 */
+			"NomePat": "n. 37 - Push2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"add;sub;xor;and;or;shr;shl;mov"} ,"Size": 0,"Operand": [1,2]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 255,"Operand": [1,2]},
+			          {"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]}]
+		},
+		/* # push edx
+           # add;sub;xor;and;or;shr;shl;mov dword ptr [esp], 0x382755a9
+           # pop ebx
+           # -------------------------------
+           # mov ebx, edx
+           # add;sub;xor;and;or;shr;shl;mov ebx, 0x382755a9
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 38 - Push2OpPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"add;sub;xor;and;or;shr;shl;mov"} ,"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2}]}],
+			"repls": [{"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			          {"OpCode": 1,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2},{"Tipo": "imm","Size": 0,"Imm": 1}]}]
+		},
+		/*# push edi
+          # mov edi, esp
+          # add edi, 4
+          # add edi, 4
+          # xchg dword ptr [esp], edi
+          # pop esp
+          # -------------------------
+          # add esp, 4,2
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 39 - PushMovAddAddXchgPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": "esp"}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65282}]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"}]}],
+			"repls": [{"OpCode": "add","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg":  "esp"},{"Tipo": "imm","Size": 0,"Imm": 65282}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 39 - PushMovAddAddXchgPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": "esp"}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"}]}],
+			"repls": [{"OpCode": "add","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg":  "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]}]
+		},
+		/*# push edi
+          # mov edi, esp
+          # add edi, 4
+          # sub edi, 4
+          # xchg dword ptr [esp], edi
+          # pop esp
+          # -------------------------
+          # sub esp, 4,2
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 40 - PushMovAddSubXchgPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": "esp"}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+					   {"OpCode":"sub" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65282}]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"}]}],
+			"repls": [{"OpCode": "sub","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg":  "esp"},{"Tipo": "imm","Size": 0,"Imm": 65282}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 40 - PushMovAddSubXchgPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": "esp"}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+					   {"OpCode":"sub" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"}]}],
+			"repls": [{"OpCode": "sub","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg":  "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]}]
+		},
+		/*# push edi
+          # mov edi, esp
+          # add edi, 4
+          # add edi, 4
+          # xchg dword ptr [esp], edi
+          # mov esp, dword ptr [esp]
+          # -------------------------
+          # add esp, 4
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 41 - PushMovAddAddXchgMov",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": "esp"}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]}],
+			"repls": [{"OpCode": "add","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg":  "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]}]
+		},
+		/*# push edi
+          # mov edi, esp
+          # add edi, 4
+          # sub edi, 4
+          # xchg dword ptr [esp], edi
+          # mov esp, dword ptr [esp]
+          # -------------------------
+          # sub esp, 4
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 42 - PushMovAddSubXchgMov",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": "esp"}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+					   {"OpCode":"sub" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65284}]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]}],
+			"repls": [{"OpCode": "sub","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg":  "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]}]
+		},
+		/*# push edi
+          # mov edi, esp
+          # xchg dword ptr [esp], edi
+          # pop esp
+          # -------------------------
+          # sub esp, 4
+
+          # push edx
+          # mov edx, esp
+          # xchg dword ptr [esp], edx
+          # mov esp, dword ptr [esp]
+          # -------------------------
+          # sub esp, 4
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 43 - PushMovXchgMov",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": "esp"}]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode":"mov", "Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]}],
+			"repls": [{"OpCode": "sub","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg":  "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 44 - PushMovXchgPop",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": "esp"}]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"}]}],
+			"repls": [{"OpCode": "sub","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg":  "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]}]
+		},
+		/*# xchg op1, op2
+          # inc,dec/neg/not op2
+          # xchg op1, op2
+          # -------------------------
+          # dec op1
+		*/
+		/*# xchg op1, op2
+          # inc,dec/neg/not op1
+          # xchg op1, op2
+          # -------------------------
+          # dec/neg/not op2
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 45 - Xchg1OpXchg",
+			"instrs": [{"OpCode":"xchg","Size": 0,"Operand": [1,2]},
+			           {"OpCode":{"oP":1,"OpCodes":"inc;dec;neg;not"} ,"Size": 0,"Operand": [2]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [1,2]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [1]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 46 - Xchg1OpXchg",
+			"instrs": [{"OpCode":"xchg","Size": 0,"Operand": [1,2]},
+			           {"OpCode":{"oP":1,"OpCodes":"inc;dec;neg;not"} ,"Size": 0,"Operand": [1]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [1,2]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [2]}]
+		},
+		{   /* -- fp00000027 -- */
+			"priority": 0,
+			"NomePat": "n. 45 - Xchg1OpXchg",
+			"instrs": [{"OpCode":"xchg","Size": 0,"Operand": [1,2]},
+			           {"OpCode":{"oP":1,"OpCodes":"inc;dec;neg;not"} ,"Size": 0,"Operand": [2]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [2,1]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [1]}]
+		},
+		{   /* -- fp00000027 -- */
+			"priority": 0,
+			"NomePat": "n. 46 - Xchg1OpXchg",
+			"instrs": [{"OpCode":"xchg","Size": 0,"Operand": [1,2]},
+			           {"OpCode":{"oP":1,"OpCodes":"inc;dec;neg;not"} ,"Size": 0,"Operand": [1]},
+					   {"OpCode":"xchg","Size": 0,"Operand": [2,1]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [2]}]
+		},
+		/*# push edx
+		  # mov edx, 0x79fc9b64
+		  # mov edi, 0x2e031e1f
+		  # xor edi,edx
+		  # pop edx
+		  # -----------------------
+		  # mov edi, 0x2e031e1f
+		  # xor edi, 0x79fc9b64
+		  
+		  # mov  edx, 0x1234
+          # add;sub;xor;and;or;shr;shl;mov  dword ptr [esp + 4], edx
+		  # -------------------------
+          # add;sub;xor;and;or;shr;shl;mov  dword ptr [esp + 4], 0x1234
+		  
+		  # mov  esi, 0x4444
+          # add;sub;xor;and;or;shr;shl;mov  dword ptr [ecx], esi
+		  # -------------------------
+          # add;sub;xor;and;or;shr;shl;mov  dword ptr [ecx], 0x4444
+		*/
+		{   /* --  fp00000020 inserito Ma fare attenzione perche potrebbe provocare problemi --*/
+			"priority": 0,
+			"Option": "0",
+			"NomePat": "n. 47 - Mov2Op",       
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"mov","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					   {"OpCode":"mov","Size": 0,"Operand": [2,{"Tipo": "imm","Size": 0,"Imm": 2}]},
+			           {"OpCode":{"oP":1,"OpCodes":"add;sub;xor;and;or;shr;shl"} ,"Size": 0,"Operand": [2,{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode":"pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode":"mov","Size": 0,"Operand": [2,{"Tipo": "imm","Size": 0,"Imm": 2}]},
+			          {"OpCode": 1,"Size": 0,"Operand": [2,{"Tipo": "imm","Size": 0,"Imm": 1}]}]
+		},
+		{   /* inseriti solo argomenti reg ed imm per evitare op2 mem,mem*/
+			"priority": 300,
+			"NomePat": "n. 47 - Mov2Op",       
+			"instrs": [{"OpCode":"mov","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"add;sub;xor;and;or;shr;shl;mov"} ,"Size": 0,"Operand": [2,1]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [2,{"Tipo": "imm","Size": 0,"Imm": 1}]}]
+		},
+		{   /* --fp00000030  probabilmente si possono accorpare fp00000030 e fp00000015 -- */
+			"priority": 400,
+			"Option": "811122",
+			"NomePat": "n. 47 - Mov2Op",       
+			"instrs": [{"OpCode":"mov","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"add;sub;xor;and;or;shr;shl;mov;movabs"} ,"Size": 0,"Operand": [2,1]}],
+			"repls": [{"OpCode":"mov","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm":1}]},
+			          {"OpCode": 1,"Size": 0,"Operand": [2,{"Tipo": "imm","Size": 0,"Imm": 1}]}]
+		},
+		{
+			"priority": 150,
+			"Option": 0,  /* --fp00000015--*/ 
+			"NomePat": "n. 47 - Mov2Op",       
+			"instrs": [{"OpCode":"mov","Size": 0,"Operand": [1,{"Tipo": "reg","Size": 0,"Reg": "ebp"}]},
+			           {"OpCode":{"oP":1,"OpCodes":"add;sub;xor;and;or;shr;shl;mov"} ,"Size": 0,"Operand": [2,1]}],
+			"repls": [{"OpCode":"mov","Size": 0,"Operand": [1,{"Tipo": "reg","Size": 0,"Reg": "ebp"}]},
+			          {"OpCode": 1,"Size": 0,"Operand": [2,{"Tipo": "reg","Size": 0,"Reg": "ebp"}]}]
+		}, 
+		{
+			"priority": 0,
+			"Option": 0, 
+			"NomePat": "n. 47 - Mov2Op",       
+			"instrs": [{"OpCode":"mov","Size": 0,"Operand": [1,{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"add;sub;xor;and;or;shr;shl;mov"} ,"Size": 0,"Operand": [2,1]}],
+			"repls": [{"OpCode":"mov","Size": 0,"Operand": [1,{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			          {"OpCode": 1,"Size": 0,"Operand": [2,{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		}, 
+		{
+			"priority": 100,
+			"NomePat": "n. 47 - Mov2Op",  /* --fp00000009--  gestione collisione*/
+			"instrs": [{"OpCode":"mov","Size": 0, "Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg":  1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2},{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]}],
+			"repls": [{"OpCode":"mov","Size": 0, "Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "reg","Size": 0,"Reg":  1}]},
+			          {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2}]}]
+		},
+		{
+			"priority": 100,
+			"NomePat": "n. 47 - Mov2Op",  /* --fp00000028--  gestione collisione*/
+			"instrs": [{"OpCode":"mov","Size": 0, "Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "imm","Size": 0,"Imm":  1}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 65284}]}],
+			"repls": [{"OpCode":"mov","Size": -11, "Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "imm","Size": 0,"Imm":  1}]},
+			          {"OpCode": "pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		/*# add edi, 0x10e90ec2
+          # sub edi, ecx
+          # sub edi, 0x10e90ec2
+          # -------------------
+          # sub edi, ecx
+
+          # add dword ptr [esp], 0x10e90ec2
+          # sub dword ptr [esp], ecx
+          # sub dword ptr [esp], 0x10e90ec2
+          # -------------------------------
+          # sub dword ptr [esp], ecx
+		*/
+		{
+			"priority": 50,
+			"NomePat": "n. 48 - AddOp2Sub",  /*--fp00000012 fix collisione--*/
+			"instrs": [{"OpCode":"add","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"add;sub;xor;and;or;shr;shl;mov"} ,"Size": 0,"Operand": [2,3]},
+					   {"OpCode": "sub","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": [{"OpCode":"add","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			          {"OpCode": 1,"Size": 0,"Operand": [2,3]},
+					  {"OpCode": "sub","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": "esp"},{"Tipo": "imm","Size": 0,"Imm": 1}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 48 - AddOp2Sub",
+			"instrs": [{"OpCode":"add","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"add;sub;xor;and;or;shr;shl;mov"} ,"Size": 0,"Operand": [2,3]},
+					   {"OpCode": "sub","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [2,3]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 49 - SubOp2Add",
+			"instrs": [{"OpCode":"sub","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"add;sub;xor;and;or;shr;shl;mov"} ,"Size": 0,"Operand": [2,3]},
+					   {"OpCode": "add","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [2,3]}]
+		},
+		/*# add esi, 0x7833190B
+          # inc/dec esi
+          # sub esi, 0x7833190B
+		  # -------------------
+          # inc esi
+       */
+	   {    /* -- fp00000013--  */
+			"priority": 0,     
+            "Option": "70",/*--fp00000026--*/			
+			"NomePat": "n. 48 - AddOp2Sub",
+			"instrs": [{"OpCode":"add","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"inc;dec"} ,"Size": 0,"Operand": [2]},
+					   {"OpCode": "sub","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [2]}]
+		},
+		{
+			"priority": 0,
+			"Option": "70",/*--fp00000026--*/
+			"NomePat": "n. 49 - SubOp2Add",
+			"instrs": [{"OpCode":"sub","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"inc/dec"} ,"Size": 0,"Operand": [2]},
+					   {"OpCode": "add","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": [{"OpCode": 1,"Size": 0,"Operand": [2]}]
+		},
+		/*# mov r11d, 0x66DBCC6A
+          # add r11, rax
+          # sub r11, 0x66DBCC6A
+		  
+		  # mov ecx, 0x24D32FAF
+          # add ecx, edi
+          # sub ecx, 0x24D32FAF
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 48 - MovAddSub2Add",
+			"instrs": [{"OpCode":"mov","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":"add" ,"Size": 0,"Operand": [1,2]},
+					   {"OpCode":"sub","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": [{"OpCode": "add","Size": 0,"Operand": [1,2]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 48 - MovSubAdd2Sub",
+			"instrs": [{"OpCode":"mov","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":"sub" ,"Size": 0,"Operand": [1,2]},
+					   {"OpCode":"add","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": [{"OpCode": "sub","Size": 0,"Operand": [1,2]}]
+		},
+		/*# mov ebp, 0x6C371729
+          # add ebp, ecx
+          # sub ebp, 0x6BFF5BB3
+		  # --------------------
+          # mov ebp, 0x400000
+		  # add ebp, ecx	
+	    */
+		{
+			"priority": 0,    /*fp00000032*/
+			"Option": "11",
+			"NomePat": "n. 48A - MovAdd2Sub",
+			"instrs": [{"OpCode":"mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":"add" ,"Size":0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"sub","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 2}]}],
+			"repls": [{"OpCode":"mov","Size":  0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			          {"OpCode": "add","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]}]
+		},			
+		/*# add ebx, 0x382755a9
+          # sub ebx, 0x382755a9
+          # -------------------
+          # nop
+		*/
+		{
+			"priority": 1,  /* --fp00000014-- */
+			"Option": "70",/*--fp00000026--*/
+			"NomePat": "n. 52 - SubAdd",
+			"instrs": [{"OpCode": "sub","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					   {"OpCode": "add","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": []
+		},
+		{
+			"priority": 1, /* --fp00000014-- */
+			"Option": "70",/*--fp00000026--*/
+			"NomePat": "n. 53 - AddSub",
+			"instrs": [{"OpCode": "add","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					   {"OpCode": "sub","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": []
+		},
+		/*# xor esi, 0x6e5fc288
+          # xor esi, 0x6e5fc288
+          # -------------------
+          # nop
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 54 - XorXor",
+			"instrs": [{"OpCode": "xor","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					   {"OpCode": "xor","Size": 0,"Operand": [1,{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": []
+		},
+		/*# mov edx, eax
+          # mov eax, 0x56efe969
+          # xchg eax, edx
+          # -------------------
+          # mov edx, 0x56efe969
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 55 - MovMovXchg",
+			"instrs": [{"OpCode":"mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+			           {"OpCode":"mov" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					   {"OpCode": "xchg","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2},{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]}]
+		},
+		/*# add eax, eax
+          # ------------
+          # shl eax, 1
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 56 - AddRegReg",
+			"instrs": [{"OpCode":"add","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "shl","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 65281}]}]
+		},
+		/*# push eax
+          # sub dword ptr [esp], 0x7f3b48c5
+          # pop dword ptr [ebp + ebx]
+          # add dword ptr [ebp + ebx], 0x7f3b48c5
+		  # ------------
+          # mov dword ptr [ebp + ebx], eax
+		  
+		  # push dword ptr [ebp + ebx] 
+          # sub dword ptr [esp], 0x7f3b48c5
+          # pop eax
+          # add eax, 0x7f3b48c5
+		  # ------------
+          # mov eax, dword ptr [ebp + ebx] 
+		  
+		  # push qword ptr [ecx]
+          # add qword ptr [esp], 0x7D73A03F
+          # pop eax
+          # sub eax, 0x7D73A03F
+		  # ------------
+          # mov eax, qword ptr [ecx] 
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 61A - PushAddPopAdd",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"add","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":"pop","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1}]},
+					   {"OpCode":"sub" ,"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": [{"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "mem","Size": -31,"Mem": 1},{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 61 - PushSubPopAdd",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"sub","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":"pop","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": [{"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "mem","Size": -31,"Mem": 1},{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 62 - PushSubPopAdd",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1}]},
+			           {"OpCode":"sub","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":"pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode":"add" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": [{"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}, {"Tipo": "mem","Size": -31,"Mem": 1}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 62 - PushSubPopAdd",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1}]},
+			           {"OpCode":"add","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":"pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode":"sub" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": [{"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}, {"Tipo": "mem","Size": -31,"Mem": 1}]}]
+		},
+		/*# push dword ptr [ebp + ebx]
+          # xor dword ptr [esp], 0x7d2b6f0e
+          # pop edx
+          # xor edx, 0x7d2b6f0e
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 63 - PushXorPopXor",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+			           {"OpCode":"xor","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":"pop","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1}]},
+					   {"OpCode":"xor" ,"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": [{"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1},{"Tipo": "reg","Size": 0,"Reg": 1}]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 64 - PushXorPopXor",
+			"instrs": [{"OpCode":"push","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem": 1}]},
+			           {"OpCode":"xor","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 0}},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":"pop","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode":"xor" ,"Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]}],
+			"repls": [{"OpCode": "mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1}, {"Tipo": "mem","Size": 0,"Mem": 1}]}]
+		},
+		/* fix vmReg Displ  eliminato perchè problemi vedi file 'Code_x64_6.txt', eseguito tramite codice direttamente VMRegFixer non dovrebbe dar fastidio!
+		  # mov ebx, ebp
+          # add ebx, 4
+          # mov byte ptr [ebx], 0
+		  # ------------
+          # mov [ebp+4],0 
+		
+		{
+			"priority": 0,
+			"NomePat": "n. 64A - MovAdd2Op",
+			"instrs": [{"OpCode":"mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+			           {"OpCode":"add","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"add;sub;xor;and;or;shr;shl;mov"},"Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}},1]}],
+			"repls": [{"OpCode": 1,"Size": -31,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 2,"index": 0,"scale": 1,"disp": 1}},1]}]
+		},
+		{
+			"priority": 0,
+			"NomePat": "n. 64B - MovAdd2Op",
+			"instrs": [{"OpCode":"mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+			           {"OpCode":"add","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":{"oP":1,"OpCodes":"add;sub;xor;and;or;shr;shl;mov"},"Size": 0,"Operand": [1,{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 1,"index": 0,"scale": 1,"disp": 0}}]}],
+			"repls": [{"OpCode": 1,"Size": -32,"Operand": [1,{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": 2,"index": 0,"scale": 1,"disp": 1}}]}]
+		},
+		*/
+		/*# pushfd
+          # push 0x2f
+          # push 0x1a07464
+          # push eax
+          # push ebx
+          # mov eax, dword ptr [esp + 0x10]
+          # mov ebx, dword ptr [esp + 8]
+          # mov dword ptr [esp + 8], eax
+          # mov dword ptr [esp + 0x10], ebx
+          # pop ebx
+          # pop eax
+		*/
+		{
+			"priority": 0,
+			"NomePat": "n. 64 - PushfdPushPushPushRegPushRegMovMovMovMovPopRegPopReg",
+			"instrs": [{"OpCode":"pushfd","Size": 0,"Operand": []},
+			           {"OpCode":"push","Size": 0,"Operand": [{"Tipo": "imm","Size": 0,"Imm": 1}]},
+			           {"OpCode":"push","Size": 0,"Operand": [{"Tipo": "imm","Size": 0,"Imm": 2}]},
+					   {"OpCode":"push" ,"Size": 0,"Operand":[{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode":"push" ,"Size": 0,"Operand":[{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 1},{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 65296}}]},
+					   {"OpCode":"mov","Size": 0,"Operand": [{"Tipo": "reg","Size": 0,"Reg": 2},{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 65288}}]},
+					   {"OpCode":"mov","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 65288}},{"Tipo": "reg","Size": 0,"Reg": 1}]},
+					   {"OpCode":"mov","Size": 0,"Operand": [{"Tipo": "mem","Size": 0,"Mem":  {"seg": "?","base": "esp","index": 0,"scale": 1,"disp": 65296}},{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"pop" ,"Size": 0,"Operand":[{"Tipo": "reg","Size": 0,"Reg": 2}]},
+					   {"OpCode":"pop" ,"Size": 0,"Operand":[{"Tipo": "reg","Size": 0,"Reg": 1}]}],
+			"repls": [{"OpCode": "push","Size": 0,"Operand": [{"Tipo": "imm","Size": 0,"Imm": 2}]},
+			          {"OpCode": "push","Size": 0,"Operand": [{"Tipo": "imm","Size": 0,"Imm": 1}]},
+					  {"OpCode": "pushfd","Size": 0,"Operand": []}]
+		}
+	]
+}
