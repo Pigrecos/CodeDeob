@@ -5,7 +5,7 @@
 * This plugin enables you to remove some common obfuscations
 * Dead code removal 
 * Peephole optimization(for PeepHole used algorithm aho-corasick , inizial idea of mrexodia in [InterObfu](https://github.com/x64dbg/InterObfu)
-* remove Multibranch Protection
+* remove Multibranch Protection(opaque predicates -  **Experimental..**)
 * ..More
 
 ### TODO List ###
