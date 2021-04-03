@@ -164,5 +164,5 @@ and ax, 0x52
 
 ### CREDITS ###
 
-* [thanks to fvrmatteo for all the new ideas and things i learned thanks to him. Great ](https://github.com/fvrmatteo)
-* [thanks to mrexodia for the code and ideas](https://github.com/x64dbg/x64dbg)
+* thanks to [fvrmatteo](https://github.com/fvrmatteo) for all the new ideas and things i learned thanks to him. Great 
+* thanks to [mrexodia](https://github.com/x64dbg/x64dbg) for the code and ideas
