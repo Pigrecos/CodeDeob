@@ -4,7 +4,7 @@
 * The goal was to create a tool that could remove virtual machine (VM) based protections from malware
 * This plugin enables you to remove some common obfuscations
 * Dead code removal 
-* Peephole optimization(for PeepHole used algorithm aho-corasick , inizial idea of mrexodia in [InterObfu](https://github.com/x64dbg/InterObfu)
+* Peephole optimization(for PeepHole used algorithm aho-corasick , inizial idea of [mrexodia](https://github.com/mrexodia)  in [InterObfu](https://github.com/x64dbg/InterObfu)
 * remove Multibranch Protection(opaque predicates -  **Experimental..**)
 * ..More
 
@@ -165,4 +165,4 @@ and ax, 0x52
 ### CREDITS ###
 
 * thanks to [fvrmatteo](https://github.com/fvrmatteo) for all the new ideas and things i learned thanks to him. Great 
-* thanks to [mrexodia](https://github.com/x64dbg/x64dbg) for the code and ideas
+* thanks to [mrexodia](https://github.com/mrexodia) for the code and ideas
